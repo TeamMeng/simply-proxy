@@ -8,12 +8,14 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
-argon2 = { version = "0.5.3", features = ["std"] }
-axum = { version = "0.8.8", features = ["query", "tracing", "multipart"] }
-chrono = { version = "0.4.44", features = ["serde"] }
-dashmap = "6.1.0"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
 tokio = { version = "1.51.1", features = ["rt", "rt-multi-thread", "macros"] }
 tracing = { version = "0.1.44", features = ["log"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+[dev-dependencies]
+argon2 = { version = "0.5.3", features = ["std"] }
+axum = { version = "0.8.8", features = ["query", "tracing", "multipart"] }
+chrono = { version = "0.4.44", features = ["serde"] }
+dashmap = "6.1.0"
