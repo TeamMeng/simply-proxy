@@ -1,4 +1,3 @@
-use http::HeaderName;
 use pingora::prelude::*;
 use tracing::info;
 
@@ -30,7 +29,7 @@ impl ProxyHttp for SimplyProxy {
         Self::CTX: Send + Sync,
     {
         info!("upstream request filtered: {:?}", upstream_request);
-        upstream_request.insert_header(HeaderName::from_static("user-agent"), "SimpleProxy/0.1")?;
+        upstream_request.insert_header("user-agent", "SimpleProxy/0.1")?;
         Ok(())
     }
 
@@ -44,16 +43,12 @@ impl ProxyHttp for SimplyProxy {
         Self::CTX: Send + Sync,
     {
         info!("upstream response filtered: {:?}", upstream_response);
-        upstream_response.insert_header(HeaderName::from_static("x-simple-proxy"), "v0.1")?;
-        match upstream_response.remove_header("server") {
-            Some(server) => {
-                upstream_response.insert_header(HeaderName::from_static("server"), server)?;
-            }
-            None => {
-                upstream_response
-                    .insert_header(HeaderName::from_static("server"), "SimpleProxy/0.1")?;
-            }
+        upstream_response.insert_header("x-simple-proxy", "v0.1")?;
+
+        if !upstream_response.headers.contains_key("server") {
+            upstream_response.insert_header("server", "SimpleProxy/0.1")?;
         }
+
         Ok(())
     }
 }
