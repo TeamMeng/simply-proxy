@@ -11,12 +11,15 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use dashmap::DashMap;
+use http::{Request, Response};
 use serde::{Deserialize, Serialize};
 use std::{
     net::SocketAddr,
     sync::{Arc, atomic::AtomicU64},
+    time::Duration,
 };
-use tracing::{info, level_filters::LevelFilter};
+use tower_http::trace::TraceLayer;
+use tracing::{Span, info, level_filters::LevelFilter};
 use tracing_subscriber::{Layer as _, fmt::Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,7 +82,16 @@ async fn main() {
         .route("/users/{id}", put(update_user_handler))
         .route("/users/{id}", delete(delete_user_handler))
         .route("/health", get(health_check))
-        .with_state(app_state);
+        .with_state(app_state)
+        .layer(
+            TraceLayer::new_for_http()
+                .on_request(|req: &Request<_>, _span: &Span| {
+                    info!("Received request: {:?}", req.headers());
+                })
+                .on_response(|resp: &Response<_>, _latency: Duration, _span: &Span| {
+                    info!("Sending response: {:?}", resp.headers());
+                }),
+        );
 
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
 
