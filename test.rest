@@ -1,5 +1,5 @@
 ### create a user
-POST http://localhost:8080/users
+POST http://api.acme.com/users
 Content-Type: application/json
 
 {
@@ -9,4 +9,4 @@ Content-Type: application/json
 }
 
 ### list users
-GET http://localhost:8080/users
+GET http://api.acme.com/users

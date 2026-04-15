@@ -10,6 +10,7 @@ use axum::{
     routing::{delete, get, post, put},
 };
 use chrono::{DateTime, Utc};
+use clap::Parser;
 use dashmap::DashMap;
 use http::{Request, Response};
 use serde::{Deserialize, Serialize};
@@ -21,6 +22,13 @@ use std::{
 use tower_http::trace::TraceLayer;
 use tracing::{Span, info, level_filters::LevelFilter};
 use tracing_subscriber::{Layer as _, fmt::Layer, layer::SubscriberExt, util::SubscriberInitExt};
+
+#[derive(Debug, Parser)]
+#[command(version, about, long_about = None)]
+struct Args {
+    #[arg(short, long, default_value_t = 3001)]
+    port: u16,
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct User {
@@ -72,7 +80,9 @@ async fn main() {
     let layer = Layer::new().with_filter(LevelFilter::INFO);
     tracing_subscriber::registry().with(layer).init();
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3000));
+    let args = Args::parse();
+
+    let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
     let app_state = AppState::new();
 
     let app = Router::new()

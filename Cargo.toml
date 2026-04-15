@@ -8,11 +8,17 @@ license = "MIT"
 
 [dependencies]
 anyhow = "1.0.102"
+arc-swap = "1.9.1"
 async-trait = "0.1.89"
+clap = { version = "4.6.0", features = ["derive"] }
 http = "1.4.0"
 pingora = { version = "0.8.0", features = ["lb", "rustls"] }
+rand = "0.10.1"
+rand_core = "0.10.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.149"
+serde_yaml = "0.9.34"
+tempfile = "3.27.0"
 tokio = { version = "1.51.1", features = ["rt", "rt-multi-thread", "macros"] }
 tracing = { version = "0.1.44", features = ["log"] }
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
