@@ -94,7 +94,6 @@ mod tests {
         assert_eq!(config.global.port, 8080);
         assert!(config.global.tls.is_none());
 
-
         assert_eq!(config.servers.len(), 2);
         assert_eq!(
             config.servers[0].server_name,
