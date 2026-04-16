@@ -1,10 +1,10 @@
 use crate::conf::raw::{GlobalConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
 use anyhow::{Result, anyhow};
+use rand::prelude::IndexedRandom;
+use rand::rng;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::path::Path;
-use rand::prelude::IndexedRandom;
-use rand::rng;
 
 #[derive(Debug, Clone)]
 pub struct ProxyConfigResolved {
