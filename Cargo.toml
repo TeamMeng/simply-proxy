@@ -26,6 +26,7 @@ tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 [dev-dependencies]
 argon2 = { version = "0.5.3", features = ["std"] }
 axum = { version = "0.8.8", features = ["query", "tracing", "multipart"] }
+axum-server = { version = "0.8.0", features = ["tls-rustls"] }
 chrono = { version = "0.4.44", features = ["serde"] }
 dashmap = "6.1.0"
 tower-http = { version = "0.6.8", features = ["trace"] }

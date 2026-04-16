@@ -1,10 +1,10 @@
 pub mod conf;
 
 use http::StatusCode;
-use pingora::prelude::*;
+use pingora::{prelude::*, upstreams::peer::Peer};
 use tracing::info;
 
-use crate::conf::ProxyConfig;
+use crate::conf::{ProxyConfig, ProxyConfigResolved};
 
 pub struct SimplyProxy {
     pub(crate) config: ProxyConfig,
@@ -15,8 +15,10 @@ pub struct ProxyContext {
 }
 
 impl SimplyProxy {
-    pub fn new(config: ProxyConfig) -> Self {
-        Self { config }
+    pub fn new(config: ProxyConfigResolved) -> Self {
+        Self {
+            config: ProxyConfig::new(config),
+        }
     }
 
     pub fn config(&self) -> &ProxyConfig {
@@ -72,7 +74,10 @@ impl ProxyHttp for SimplyProxy {
             ));
         };
 
-        let peer = HttpPeer::new(upstream.to_string(), false, host.to_string());
+        let mut peer = HttpPeer::new(upstream.to_string(), server.tls, host.to_string());
+        if let Some(options) = peer.get_mut_peer_options() {
+            options.set_http_version(2, 2);
+        }
         info!("upstream peer: {}", peer.to_string());
         Ok(Box::new(peer))
     }

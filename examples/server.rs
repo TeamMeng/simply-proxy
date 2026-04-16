@@ -1,3 +1,4 @@
+use anyhow::Result;
 use argon2::{
     Argon2,
     password_hash::{PasswordHasher, SaltString, rand_core::OsRng},
@@ -9,6 +10,7 @@ use axum::{
     response::IntoResponse,
     routing::{delete, get, post, put},
 };
+use axum_server::tls_rustls::RustlsConfig;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dashmap::DashMap;
@@ -76,11 +78,15 @@ struct Health {
 // =============================================================================
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
     let layer = Layer::new().with_filter(LevelFilter::INFO);
     tracing_subscriber::registry().with(layer).init();
 
     let args = Args::parse();
+
+    let cert = include_bytes!("../fixtures/certs/api.acme.com.crt");
+    let key = include_bytes!("../fixtures/certs/api.acme.com.key");
+    let config = RustlsConfig::from_pem(cert.to_vec(), key.to_vec()).await?;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
     let app_state = AppState::new();
@@ -103,11 +109,12 @@ async fn main() {
                 }),
         );
 
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
-
     info!("Starting server at http://{}", addr);
 
-    axum::serve(listener, app).await.unwrap();
+    axum_server::bind_rustls(addr, config)
+        .serve(app.into_make_service())
+        .await?;
+    Ok(())
 }
 
 // =============================================================================
