@@ -10,3 +10,7 @@ Content-Type: application/json
 
 ### list users
 GET https://api.acme.com/users
+
+
+### acme web
+GET https://www.acme.com/
