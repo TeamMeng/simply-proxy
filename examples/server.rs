@@ -5,16 +5,17 @@ use argon2::{
 };
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::StatusCode,
-    response::IntoResponse,
+    middleware::{Next, from_fn_with_state},
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
 };
 use axum_server::tls_rustls::RustlsConfig;
 use chrono::{DateTime, Utc};
 use clap::Parser;
 use dashmap::DashMap;
-use http::{Request, Response};
+use http::HeaderValue;
 use serde::{Deserialize, Serialize};
 use std::{
     net::SocketAddr,
@@ -66,6 +67,7 @@ struct AppStateInner {
     next_user_id: AtomicU64,
     users: DashMap<u64, User>,
     argon2: Argon2<'static>,
+    addr: SocketAddr,
 }
 
 #[derive(Serialize)]
@@ -89,7 +91,7 @@ async fn main() -> Result<()> {
     let config = RustlsConfig::from_pem(cert.to_vec(), key.to_vec()).await?;
 
     let addr = SocketAddr::from(([0, 0, 0, 0], args.port));
-    let app_state = AppState::new();
+    let app_state = AppState::new(addr);
 
     let app = Router::new()
         .route("/users/{id}", get(get_user_handler))
@@ -98,6 +100,7 @@ async fn main() -> Result<()> {
         .route("/users/{id}", put(update_user_handler))
         .route("/users/{id}", delete(delete_user_handler))
         .route("/health", get(health_check))
+        .route_layer(from_fn_with_state(app_state.clone(), server_info))
         .with_state(app_state)
         .layer(
             TraceLayer::new_for_http()
@@ -117,17 +120,29 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
+async fn server_info(State(state): State<AppState>, req: Request, next: Next) -> Response {
+    let mut response = next.run(req).await;
+
+    response.headers_mut().insert(
+        "X-Server-Info",
+        HeaderValue::from_str(&state.inner.addr.to_string()).unwrap(),
+    );
+
+    response
+}
+
 // =============================================================================
 // Implement the application state and handlers
 // =============================================================================
 
 impl AppState {
-    fn new() -> Self {
+    fn new(addr: impl Into<SocketAddr>) -> Self {
         Self {
             inner: Arc::new(AppStateInner {
                 next_user_id: AtomicU64::new(1),
                 users: DashMap::new(),
                 argon2: Argon2::default(),
+                addr: addr.into(),
             }),
         }
     }
@@ -269,14 +284,16 @@ mod tests {
 
         #[test]
         fn new_creates_empty_user_store() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let users = state.list_user();
             assert!(users.is_empty(), "Expected empty user list");
         }
 
         #[test]
         fn new_starts_user_id_from_one() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             // First user created should have id = 1
             let input = CreateUser {
                 email: "test@example.com".to_string(),
@@ -289,7 +306,8 @@ mod tests {
 
         #[test]
         fn get_user_by_id_returns_user_when_exists() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let input = CreateUser {
                 email: "test@example.com".to_string(),
                 password: "password123".to_string(),
@@ -303,14 +321,15 @@ mod tests {
 
         #[test]
         fn get_user_by_id_returns_none_when_not_exists() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let found = state.get_user_by_id(999);
             assert!(found.is_none(), "Should not find non-existent user");
         }
 
         #[test]
         fn list_user_returns_all_users() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
 
             state
                 .create_user(CreateUser {
@@ -334,7 +353,8 @@ mod tests {
 
         #[test]
         fn delete_user_removes_user() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let input = CreateUser {
                 email: "test@example.com".to_string(),
                 password: "password123".to_string(),
@@ -350,7 +370,8 @@ mod tests {
 
         #[test]
         fn delete_user_returns_none_when_not_exists() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let deleted = state.delete_user(999);
             assert!(
                 deleted.is_none(),
@@ -360,7 +381,8 @@ mod tests {
 
         #[test]
         fn health_returns_true() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             assert!(state.health(), "Health check should return true");
         }
     }
@@ -374,7 +396,8 @@ mod tests {
 
         #[test]
         fn create_user_hashes_password() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let input = CreateUser {
                 email: "test@example.com".to_string(),
                 password: "plaintext_password".to_string(),
@@ -394,7 +417,8 @@ mod tests {
 
         #[test]
         fn create_user_sets_timestamps() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
+
             let before = Utc::now();
             let input = CreateUser {
                 email: "test@example.com".to_string(),
@@ -416,7 +440,7 @@ mod tests {
 
         #[test]
         fn create_user_assigns_correct_fields() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let input = CreateUser {
                 email: "test@example.com".to_string(),
                 password: "password123".to_string(),
@@ -431,7 +455,7 @@ mod tests {
 
         #[test]
         fn update_user_updates_email() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let created = state
                 .create_user(CreateUser {
                     email: "old@example.com".to_string(),
@@ -455,7 +479,7 @@ mod tests {
 
         #[test]
         fn update_user_updates_name() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let created = state
                 .create_user(CreateUser {
                     email: "test@example.com".to_string(),
@@ -479,7 +503,7 @@ mod tests {
 
         #[test]
         fn update_user_updates_password() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let created = state
                 .create_user(CreateUser {
                     email: "test@example.com".to_string(),
@@ -504,7 +528,7 @@ mod tests {
 
         #[test]
         fn update_user_updates_timestamp() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let created = state
                 .create_user(CreateUser {
                     email: "test@example.com".to_string(),
@@ -532,7 +556,7 @@ mod tests {
 
         #[test]
         fn update_user_returns_error_when_not_found() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let update = UpdateUser {
                 email: Some("new@example.com".to_string()),
                 password: None,
@@ -544,7 +568,7 @@ mod tests {
 
         #[test]
         fn update_user_preserves_original_fields() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let created = state
                 .create_user(CreateUser {
                     email: "test@example.com".to_string(),
@@ -701,7 +725,7 @@ mod tests {
 
         #[test]
         fn concurrent_user_creation() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
             let state_clone = state.clone();
 
             let handle1 = thread::spawn(move || {
@@ -738,7 +762,7 @@ mod tests {
 
         #[test]
         fn concurrent_read_write() {
-            let state = AppState::new();
+            let state = AppState::new("127.0.0.1:3001".parse().unwrap());
 
             // Create initial users
             for i in 0..50 {
