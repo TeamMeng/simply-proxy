@@ -40,7 +40,7 @@ impl RateLimiter {
         let mut entry = self.entries.entry(key.to_string()).or_default();
 
         // Drain timestamps that have fallen outside the window
-        let before = entry.len();
+        let _before = entry.len();
         entry.retain(|&ts| ts > cutoff);
 
         if entry.len() < self.max_requests {
