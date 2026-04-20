@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use pingora::{server::ListenFds, server::ShutdownWatch, services::Service};
 use std::time::Duration;
 use tokio::time::interval;
-use tracing::info;
+use tracing::{debug, info};
 
 const HEALTH_SERVICE_INTERVAL: Duration = Duration::from_secs(5);
 
@@ -30,7 +30,7 @@ impl Service for HealthService {
         loop {
             interval.tick().await;
             for (host, entry) in route_table.iter() {
-                info!("Checking health of {}", host);
+                debug!("Checking health of {}", host);
 
                 entry.upstream.update().await.ok();
                 entry.upstream.backends().run_health_check(true).await;

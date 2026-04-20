@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use http::{StatusCode, header};
 use pingora::{
     cache::{
@@ -13,16 +13,17 @@ use pingora::{
     proxy::{FailToProxy, PurgeStatus},
     upstreams::peer::Peer,
 };
+use serde_json::Value;
 use std::time::Duration;
-use tracing::{error, info};
+use tracing::{error, info, warn};
 
 use crate::{
-    ProxyContext, RouteTable, SimplyProxy,
+    ProxyContext, RouteTable, SimpleProxy,
     conf::{ProxyConfig, ProxyConfigResolved},
     get_host_port,
 };
 
-impl SimplyProxy {
+impl SimpleProxy {
     pub fn try_new(config: ProxyConfigResolved) -> anyhow::Result<Self> {
         let route_table = RouteTable::try_new(&config)?;
         Ok(Self {
@@ -41,7 +42,7 @@ impl SimplyProxy {
 }
 
 #[async_trait]
-impl ProxyHttp for SimplyProxy {
+impl ProxyHttp for SimpleProxy {
     type CTX = ProxyContext;
 
     fn new_ctx(&self) -> Self::CTX {
@@ -50,6 +51,8 @@ impl ProxyHttp for SimplyProxy {
             route_entry: None,
             host: "".to_string(),
             port: 80,
+            resp_content_type: None,
+            resp_body: None,
         }
     }
 
@@ -116,12 +119,25 @@ impl ProxyHttp for SimplyProxy {
         &self,
         _session: &mut Session,
         upstream_response: &mut ResponseHeader,
-        _ctx: &mut Self::CTX,
+        ctx: &mut Self::CTX,
     ) -> Result<()>
     where
         Self::CTX: Send + Sync,
     {
         info!("upstream response filtered: {:?}", upstream_response);
+
+        ctx.resp_content_type = upstream_response
+            .headers
+            .get("content-type")
+            .and_then(|v| v.to_str().ok())
+            .map(|s| s.to_string());
+
+        upstream_response.remove_header("Content-Length");
+
+        if let Err(e) = upstream_response.insert_header("transfer-encoding", "chunked") {
+            warn!("failed to insert header: {}", e);
+        }
+
         upstream_response.insert_header("x-simple-proxy", "v0.1")?;
 
         if !upstream_response.headers.contains_key("server") {
@@ -263,11 +279,81 @@ impl ProxyHttp for SimplyProxy {
     fn upstream_response_body_filter(
         &self,
         _session: &mut Session,
-        _body: &mut Option<Bytes>,
-        _end_of_stream: bool,
-        _ctx: &mut Self::CTX,
+        body: &mut Option<Bytes>,
+        end_of_stream: bool,
+        ctx: &mut Self::CTX,
     ) -> Result<Option<Duration>> {
-        info!("upstream_response_body_filter");
+        info!(
+            "upstream_response_body_filter: end_of_stream={}",
+            end_of_stream
+        );
+        if let Some(body) = body {
+            if let Some(resp_body) = &mut ctx.resp_body {
+                resp_body.extend_from_slice(body);
+            } else {
+                let mut resp_body = BytesMut::new();
+                resp_body.extend_from_slice(body);
+                ctx.resp_body = Some(resp_body);
+            }
+        }
+
+        if !end_of_stream {
+            *body = None;
+            return Ok(None);
+        }
+
+        let Some(resp_body) = ctx.resp_body.take() else {
+            return Ok(None);
+        };
+        let resp_body = resp_body.freeze();
+        // if this is json (please check: content-type: application/json)
+        let Some(content_type) = ctx.resp_content_type.as_deref() else {
+            return Ok(None);
+        };
+        if !content_type.starts_with("application/json") {
+            return Ok(None);
+        }
+
+        let Ok(json_body) = serde_json::from_slice::<Value>(&resp_body) else {
+            return Ok(None);
+        };
+
+        let json_body = match json_body {
+            Value::Object(mut obj) => {
+                obj.insert(
+                    "x-simple-proxy".to_string(),
+                    Value::String("v0.1".to_string()),
+                );
+                Value::Object(obj)
+            }
+            Value::Array(mut arr) => {
+                for item in arr.iter_mut() {
+                    if let Value::Object(obj) = item {
+                        obj.insert(
+                            "x-simple-proxy".to_string(),
+                            Value::String("v0.1".to_string()),
+                        );
+                    }
+                }
+                Value::Array(arr)
+            }
+
+            _ => json_body,
+        };
+
+        let mut data = Vec::new();
+        if let Err(e) = serde_json::to_writer(&mut data, &json_body) {
+            error!("failed to serialize json body: {}", e);
+            // TODO: just return 500
+            return Err(Error::create(
+                ErrorType::HTTPStatus(StatusCode::INTERNAL_SERVER_ERROR.into()),
+                ErrorSource::Upstream,
+                None,
+                None,
+            ));
+        }
+        *body = Some(data.into());
+
         Ok(None)
     }
 

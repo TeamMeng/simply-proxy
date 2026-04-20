@@ -4,7 +4,7 @@ use pingora::listeners::tls::TlsSettings;
 use pingora::server::configuration::ServerConf;
 use pingora::{proxy::http_proxy_service, server::Server};
 use simply_proxy::HealthService;
-use simply_proxy::{SimplyProxy, conf::ProxyConfigResolved};
+use simply_proxy::{SimpleProxy, conf::ProxyConfigResolved};
 use std::path::PathBuf;
 use tracing::info;
 
@@ -41,7 +41,7 @@ fn main() -> Result<()> {
     };
     let proxy_addr = format!("0.0.0.0:{}", config.global.port);
 
-    let rp = SimplyProxy::try_new(config)?;
+    let rp = SimpleProxy::try_new(config)?;
     let health_service = HealthService::new(rp.route_table().clone());
 
     let mut proxy = http_proxy_service(&server.configuration, rp);
