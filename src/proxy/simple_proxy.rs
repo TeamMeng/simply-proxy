@@ -18,7 +18,7 @@ use std::time::Duration;
 use tracing::{error, info, warn};
 
 use crate::{
-    ProxyContext, RouteTable, SimpleProxy,
+    ProxyContext, RateLimiter, RouteTable, SimpleProxy,
     conf::{ProxyConfig, ProxyConfigResolved},
     get_host_port,
 };
@@ -29,7 +29,7 @@ impl SimpleProxy {
 
         // Create rate limiter if configured
         let rate_limiter = config.global.rate_limit.as_ref().map(|rl| {
-            let limiter = crate::rate_limit::RateLimiter::new(rl.max_requests, rl.window);
+            let limiter = RateLimiter::new(rl.max_requests, rl.window);
             info!(
                 "Rate limiter enabled: {} requests / {}s",
                 rl.max_requests,

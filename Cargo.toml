@@ -12,6 +12,7 @@ arc-swap = "1.9.1"
 async-trait = "0.1.89"
 bytes = "1.11.1"
 clap = { version = "4.6.0", features = ["derive"] }
+dashmap = "6.1.0"
 http = "1.4.0"
 papaya = { version = "0.2.4", features = ["serde"] }
 pingora = { version = "0.8.0", features = ["cache", "lb", "rustls"] }

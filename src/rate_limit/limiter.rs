@@ -1,7 +1,6 @@
+use dashmap::DashMap;
 use std::collections::VecDeque;
 use std::time::{Duration, Instant};
-
-use dashmap::DashMap;
 
 /// A sliding-window rate limiter backed by `DashMap`.
 ///
