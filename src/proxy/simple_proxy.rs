@@ -88,7 +88,9 @@ impl ProxyHttp for SimpleProxy {
                     let mut header = ResponseHeader::build(StatusCode::TOO_MANY_REQUESTS, None)?;
                     header.insert_header(header::RETRY_AFTER, retry_after)?;
                     header.insert_header("content-type", "text/plain")?;
-                    session.write_response_header(Box::new(header), false).await?;
+                    session
+                        .write_response_header(Box::new(header), false)
+                        .await?;
                     session
                         .write_response_body(Some(Bytes::from("Too Many Requests")), true)
                         .await?;

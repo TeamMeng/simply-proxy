@@ -1,4 +1,6 @@
-use crate::conf::raw::{GlobalConfig, RateLimitConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
+use crate::conf::raw::{
+    GlobalConfig, RateLimitConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig,
+};
 use anyhow::{Result, anyhow};
 use rand::prelude::IndexedRandom;
 use rand::rng;
