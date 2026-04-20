@@ -1,10 +1,11 @@
-use crate::conf::raw::{GlobalConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
+use crate::conf::raw::{GlobalConfig, RateLimitConfig, ServerConfig, SimpleProxyConfig, TlsConfig, UpstreamConfig};
 use anyhow::{Result, anyhow};
 use rand::prelude::IndexedRandom;
 use rand::rng;
 use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::path::Path;
+use std::time::Duration;
 
 #[derive(Debug, Clone)]
 pub struct ProxyConfigResolved {
@@ -16,6 +17,14 @@ pub struct ProxyConfigResolved {
 pub struct GlobalConfigResolved {
     pub port: u16,
     pub tls: Option<TlsConfigResolved>,
+    pub rate_limit: Option<RateLimitConfigResolved>,
+}
+
+/// Resolved rate-limit configuration (raw values converted to usable types).
+#[derive(Debug, Clone)]
+pub struct RateLimitConfigResolved {
+    pub max_requests: usize,
+    pub window: Duration,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +49,15 @@ impl ProxyConfigResolved {
     pub fn load(file: impl AsRef<Path>) -> Result<Self> {
         let config = SimpleProxyConfig::from_yaml_file(file)?;
         Self::try_from(config)
+    }
+}
+
+impl From<&RateLimitConfig> for RateLimitConfigResolved {
+    fn from(rl: &RateLimitConfig) -> Self {
+        Self {
+            max_requests: rl.max_requests,
+            window: Duration::from_secs(rl.window_secs),
+        }
     }
 }
 
@@ -130,9 +148,15 @@ impl TryFrom<&GlobalConfig> for GlobalConfigResolved {
             None => None,
         };
 
+        let rate_limit = global
+            .rate_limit
+            .as_ref()
+            .map(RateLimitConfigResolved::from);
+
         Ok(GlobalConfigResolved {
             port: global.port,
             tls,
+            rate_limit,
         })
     }
 }
@@ -238,12 +262,32 @@ mod tests {
         let raw_global = GlobalConfig {
             port: 8080,
             tls: None,
+            rate_limit: None,
         };
 
         let resolved_global = GlobalConfigResolved::try_from(&raw_global).unwrap();
 
         assert_eq!(resolved_global.port, 8080);
         assert!(resolved_global.tls.is_none());
+        assert!(resolved_global.rate_limit.is_none());
+    }
+
+    #[test]
+    fn test_global_config_resolved_with_rate_limit() {
+        let raw_global = GlobalConfig {
+            port: 8080,
+            tls: None,
+            rate_limit: Some(RateLimitConfig {
+                max_requests: 100,
+                window_secs: 60,
+            }),
+        };
+
+        let resolved_global = GlobalConfigResolved::try_from(&raw_global).unwrap();
+        assert_eq!(resolved_global.port, 8080);
+        let rl = resolved_global.rate_limit.unwrap();
+        assert_eq!(rl.max_requests, 100);
+        assert_eq!(rl.window, Duration::from_secs(60));
     }
 
     #[test]
@@ -266,6 +310,7 @@ mod tests {
         let raw_global = GlobalConfig {
             port: 8080,
             tls: Some(tls_config),
+            rate_limit: None,
         };
 
         let resolved_global = GlobalConfigResolved::try_from(&raw_global).unwrap();
@@ -349,6 +394,7 @@ mod tests {
         let global_config = GlobalConfig {
             port: 8080,
             tls: Some(tls_config),
+            rate_limit: None,
         };
 
         let server_configs = vec![
@@ -455,6 +501,7 @@ mod tests {
         let global_config = GlobalConfig {
             port: 8080,
             tls: Some(tls_config),
+            rate_limit: None,
         };
 
         let server_configs = vec![

@@ -24,6 +24,20 @@ pub struct GlobalConfig {
     /// TLS configuration
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tls: Option<TlsConfig>,
+
+    /// Rate limiting configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rate_limit: Option<RateLimitConfig>,
+}
+
+/// Rate limiting configuration
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct RateLimitConfig {
+    /// Maximum number of requests allowed per window per client IP
+    pub max_requests: usize,
+
+    /// Window duration in seconds
+    pub window_secs: u64,
 }
 
 /// Certificate configuration
@@ -93,6 +107,7 @@ mod tests {
 
         assert_eq!(config.global.port, 8080);
         assert!(config.global.tls.is_none());
+        assert!(config.global.rate_limit.is_none());
 
         assert_eq!(config.servers.len(), 2);
         assert_eq!(
@@ -108,5 +123,31 @@ mod tests {
             config.upstreams[0].servers,
             vec!["127.0.0.1:3001", "127.0.0.1:3002"]
         );
+    }
+
+    #[test]
+    fn test_load_config_with_rate_limit() {
+        let yaml = r#"
+global:
+  port: 8080
+  rate_limit:
+    max_requests: 100
+    window_secs: 60
+
+servers:
+  - server_name:
+      - acme.com
+    upstream: web_servers
+
+upstreams:
+  - name: web_servers
+    servers:
+      - 127.0.0.1:3001
+"#;
+        let config = SimpleProxyConfig::from_yaml_str(yaml).unwrap();
+        assert_eq!(config.global.port, 8080);
+        let rl = config.global.rate_limit.unwrap();
+        assert_eq!(rl.max_requests, 100);
+        assert_eq!(rl.window_secs, 60);
     }
 }

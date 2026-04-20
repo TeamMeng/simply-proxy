@@ -26,9 +26,22 @@ use crate::{
 impl SimpleProxy {
     pub fn try_new(config: ProxyConfigResolved) -> anyhow::Result<Self> {
         let route_table = RouteTable::try_new(&config)?;
+
+        // Create rate limiter if configured
+        let rate_limiter = config.global.rate_limit.as_ref().map(|rl| {
+            let limiter = crate::rate_limit::RateLimiter::new(rl.max_requests, rl.window);
+            info!(
+                "Rate limiter enabled: {} requests / {}s",
+                rl.max_requests,
+                rl.window.as_secs()
+            );
+            limiter
+        });
+
         Ok(Self {
             config: ProxyConfig::new(config),
             route_table,
+            rate_limiter,
         })
     }
 
@@ -58,6 +71,31 @@ impl ProxyHttp for SimpleProxy {
 
     async fn request_filter(&self, session: &mut Session, ctx: &mut Self::CTX) -> Result<bool> {
         info!("request_cache_filter");
+
+        // Rate limiting check (skip for health check path)
+        if let Some(ref limiter) = self.rate_limiter {
+            let path = session.req_header().uri.path();
+            if path != "/health" {
+                // Use client IP as rate-limit key; fall back to "unknown" if unavailable
+                let key = session
+                    .client_addr()
+                    .map(|a| a.to_string())
+                    .unwrap_or_else(|| "unknown".to_string());
+
+                if !limiter.allow(&key) {
+                    warn!("Rate limit exceeded for client: {}", key);
+                    let retry_after = limiter.window().as_secs();
+                    let mut header = ResponseHeader::build(StatusCode::TOO_MANY_REQUESTS, None)?;
+                    header.insert_header(header::RETRY_AFTER, retry_after)?;
+                    header.insert_header("content-type", "text/plain")?;
+                    session.write_response_header(Box::new(header), false).await?;
+                    session
+                        .write_response_body(Some(Bytes::from("Too Many Requests")), true)
+                        .await?;
+                    return Ok(true); // request consumed, stop processing
+                }
+            }
+        }
 
         let (host, port) =
             get_host_port(session.get_header(header::HOST), &session.req_header().uri);

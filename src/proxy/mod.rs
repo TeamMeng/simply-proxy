@@ -8,10 +8,12 @@ use pingora::{lb::LoadBalancer, prelude::RoundRobin};
 use std::sync::Arc;
 
 use crate::conf::ProxyConfig;
+use crate::rate_limit::RateLimiter;
 
 pub struct SimpleProxy {
     pub(crate) config: ProxyConfig,
     pub(crate) route_table: RouteTable,
+    pub(crate) rate_limiter: Option<RateLimiter>,
 }
 
 #[allow(unused)]
